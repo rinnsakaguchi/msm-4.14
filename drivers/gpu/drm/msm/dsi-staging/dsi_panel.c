@@ -1758,6 +1758,10 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-pre-off-command",
 	"qcom,mdss-dsi-off-command",
 	"qcom,mdss-dsi-post-off-command",
+	"qcom,mdss-dsi-cabc-on-command",
+	"qcom,mdss-dsi-cabc-off-command",
+	"qcom,mdss-dsi-cabc_movie-on-command",
+	"qcom,mdss-dsi-cabc_still-on-command",
 	"qcom,mdss-dsi-pre-res-switch",
 	"qcom,mdss-dsi-res-switch",
 	"qcom,mdss-dsi-post-res-switch",
@@ -1839,6 +1843,10 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-pre-off-command-state",
 	"qcom,mdss-dsi-off-command-state",
 	"qcom,mdss-dsi-post-off-command-state",
+	"qcom,mdss-dsi-cabc-on-command-state",
+	"qcom,mdss-dsi-cabc-off-command-state",
+	"qcom,mdss-dsi-cabc_movie-on-command-state",
+	"qcom,mdss-dsi-cabc_still-on-command-state",
 	"qcom,mdss-dsi-pre-res-switch-state",
 	"qcom,mdss-dsi-res-switch-state",
 	"qcom,mdss-dsi-post-res-switch-state",
@@ -4945,6 +4953,7 @@ error:
 	return rc;
 }
 
+<<<<<<< HEAD
 int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
 {
 	static const enum dsi_cmd_set_type type_map[] = {
@@ -4992,4 +5001,29 @@ int dsi_panel_apply_cabc_mode(struct dsi_panel *panel)
 	mutex_unlock(&panel->panel_lock);
 
 	return rc;
+=======
+int dsi_panel_set_feature(struct dsi_panel *panel, enum dsi_cmd_set_type type)
+{
+		int rc = 0;
+
+		if (!panel) {
+				pr_err("Invalid params\n");
+				return -EINVAL;
+		}
+		pr_info("xinj:%s panel_initialized=%d type=%d\n", __func__, panel->panel_initialized, type);
+		if (!panel->panel_initialized) {
+				pr_err("xinj: con't set cmds type=%d\n", type);
+				return -EINVAL;
+		}
+
+		mutex_lock(&panel->panel_lock);
+
+		rc = dsi_panel_tx_cmd_set(panel, type);
+		if (rc) {
+				pr_err("[%s] failed to send DSI_CMD_SET_FEATURE_ON/OFF cmds, rc=%d,type=%d\n",
+						panel->name, rc, type);
+		}
+		mutex_unlock(&panel->panel_lock);
+		return rc;
+>>>>>>> 3bd8b5acb208 ([M700][LCD][HTH-88211] Add cabc mode)
 }

@@ -4961,7 +4961,6 @@ error:
 	return rc;
 }
 
-<<<<<<< HEAD
 int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
 {
 	static const enum dsi_cmd_set_type type_map[] = {
@@ -5009,7 +5008,6 @@ int dsi_panel_apply_cabc_mode(struct dsi_panel *panel)
 	mutex_unlock(&panel->panel_lock);
 
 	return rc;
-=======
 int dsi_panel_set_feature(struct dsi_panel *panel, enum dsi_cmd_set_type type)
 {
 		int rc = 0;
@@ -5033,5 +5031,4 @@ int dsi_panel_set_feature(struct dsi_panel *panel, enum dsi_cmd_set_type type)
 		}
 		mutex_unlock(&panel->panel_lock);
 		return rc;
->>>>>>> 3bd8b5acb208 ([M700][LCD][HTH-88211] Add cabc mode)
 }

@@ -492,6 +492,9 @@
 					29 01 00 00 00 00 02 52 77
 					29 01 00 00 00 00 02 53 6D
 					29 01 00 00 00 00 02 54 65
+				qcom,mdss-dsi-cabc-still-on-command = [
+				];
+				qcom,mdss-dsi-cabc-movie-on-command  = [
 				];
 				qcom,mdss-dsi-cabc-off-command = [
 					29 01 00 00 00 00 02 FF 10
@@ -507,11 +510,19 @@
 				];
 				qcom,mdss-dsi-hbm-off-command = [
 				];
+				qcom,mdss-dsi-hbm1-on-command = [
+				];
+				qcom,mdss-dsi-hbm2-on-command = [
+				];
+				qcom,mdss-dsi-hbm3-on-command  = [
+				];
+				qcom,mdss-dsi-hbm-off-command = [
+				];
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-cabc-on-command-state = "dsi_hs_mode";
-				qcom,mdss-dsi-cabc-movie-on-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-cabc-still-on-command-state = "dsi_hs_mode";
+				qcom,mdss-dsi-cabc-movie-on-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-cabc-off-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-hbm1-on-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-hbm2-on-command-state = "dsi_hs_mode";

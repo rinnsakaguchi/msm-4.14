@@ -1243,13 +1243,13 @@ int dsi_display_set_power(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
-	if (!connector || !connector->dev) {
-		pr_err("invalid connector/dev\n");
-		return -EINVAL;
-	} else {
-		dev = connector->dev;
-		event = dev->doze_state;
-	}
+        if (!connector || !connector->dev) {
+                pr_err("invalid connector/dev\n");
+                return -EINVAL;
+        } else {
+                dev = connector->dev;
+                event = dev->doze_state;
+        }
 
 	g_notify_data.data = &event;
 

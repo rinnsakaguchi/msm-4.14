@@ -1,4 +1,4 @@
-name: build kernel [MIUI]
+name: Azure Build
 on:
   workflow_dispatch:
 jobs:

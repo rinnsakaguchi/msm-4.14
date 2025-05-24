@@ -44,7 +44,7 @@ jobs:
            export KBUILD_BUILD_USER=mahiroo
            export KBUILD_BUILD_HOST=hirateam
            export KBUILD_COMPILER_STRING="${PWD}/clang"
-           make O=out ARCH=arm64 vendor/surya_defconfig  
+           make O=out ARCH=arm64 surya_defconfig  
            make -j$(nproc --all) O=out \ ARCH=arm64 \ LLVM=1 \ LLVM_IAS=1 \ CLANG_TRIPLE=aarch64-linux-gnu- \ CROSS_COMPILE=aarch64-linux-gnu- \ CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \ CROSS_COMPILE_ARM32=arm-linux-gnueabi-
            mv out/.config out/surya_defconfig.txt
            

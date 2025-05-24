@@ -32,10 +32,6 @@ jobs:
     - name: Fetch KernelSU-SuSFS
       run: |
             curl -LSs "https://raw.githubusercontent.com/buildkernel1/KernelSU-Next/main/kernel/setup.sh" | bash -s main  
-           
-    - name: Clean previous build
-      run: |
-           make clean && make mrproper
                  
     - name: Build Kernell
       run: |

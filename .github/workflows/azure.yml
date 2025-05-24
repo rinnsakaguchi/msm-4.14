@@ -74,13 +74,13 @@ jobs:
         name: Strix-Interstellar-MIUI-${{ env.BUILD_TIME }}
         path: AnyKernel3/*
 
-      - name: Upload to Telegram
-        uses: appleboy/telegram-action@master
-        with:
-          to: 1002354747626
-          token: 7485743487:AAEKPw9ubSKZKit9BDHfNJSTWcWax4STUZs
-          document: ${{ env.ZIPNAME }}
-          message: |
+    - name: Upload to Telegram
+      uses: appleboy/telegram-action@master
+      with:
+        to: 1002354747626
+        token: 7485743487:AAEKPw9ubSKZKit9BDHfNJSTWcWax4STUZs
+        document: ${{ env.ZIPNAME }}
+        message: |
              ${{ env.BUILD_DATE }}
              
              ${{ env.HEAD_COMMIT }}

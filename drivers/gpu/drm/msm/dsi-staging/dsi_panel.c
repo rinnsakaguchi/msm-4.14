@@ -3471,10 +3471,7 @@ static int msm_lcd_name_create_sysfs(void)
 	return 0;
 }
 
-<<<<<<< HEAD
 #define XY_COORDINATE_NUM    2
-=======
->>>>>>> 4a73acb62806 ([M700][LCD][HTH-87985] add hbm mode)
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				struct device_node *parser_node,

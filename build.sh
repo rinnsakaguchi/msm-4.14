@@ -4,7 +4,7 @@
 # Copyright (C) 2020-2021 Adithya R.
 
 SECONDS=0 # builtin bash timer
-ZIPNAME="FSociety-surya-$(date '+%Y%m%d-%H%M').zip"
+ZIPNAME="HyperOS-surya-$(date '+%Y%m%d-%H%M').zip"
 TC_DIR="$(pwd)/tc/clang-20"
 AK3_DIR="$(pwd)/android/AnyKernel3"
 DEFCONFIG="surya_defconfig"
@@ -78,8 +78,8 @@ if [[ $1 = "-rf" || $1 = "--regen-full" ]]; then
 	exit
 fi
 
-CLEAN_BUILD=false
-ENABLE_KSU=false
+CLEAN_BUILD=true
+ENABLE_KSU=true
 
 for arg in "$@"; do
 	case $arg in

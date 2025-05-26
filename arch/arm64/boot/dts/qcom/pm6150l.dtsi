@@ -325,11 +325,8 @@
 			qcom,pmic-revid = <&pm6150l_revid>;
 			qcom,fs-current-limit = <25000>;
 			qcom,auto-calibration;
-<<<<<<< HEAD
 			qcom,en-cabc;
 			qcom,cabc-sel = <1>;
-=======
->>>>>>> 0e7b0b2d24a4 ([M700][LCD][HTH-88211] add cabc mode)
 			status = "ok";
 
 			wled_flash: qcom,wled-flash {

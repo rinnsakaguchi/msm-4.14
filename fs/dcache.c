@@ -39,6 +39,9 @@
 #include <linux/prefetch.h>
 #include <linux/ratelimit.h>
 #include <linux/list_lru.h>
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#include <linux/susfs_def.h>
+#endif
 
 #include "internal.h"
 #include "mount.h"
@@ -2245,18 +2248,45 @@ struct dentry *__d_lookup_rcu(const struct dentry *parent,
 		 * we are still guaranteed NUL-termination of ->d_name.name.
 		 */
 		seq = raw_seqcount_begin(&dentry->d_seq);
-		if (dentry->d_parent != parent)
-			continue;
-		if (d_unhashed(dentry))
-			continue;
-		if (dentry->d_name.hash_len != hashlen)
-			continue;
-		if (dentry_cmp(dentry, str, hashlen_len(hashlen)) != 0)
-			continue;
-		*seqp = seq;
-		return dentry;
-	}
-	return NULL;
+        if (dentry->d_parent != parent)
+            continue;
+        if (d_unhashed(dentry))
+            continue;
+        if (dentry->d_name.hash_len != hashlen)
+            continue;
+        if (dentry_cmp(dentry, str, hashlen_len(hashlen)) != 0)
+            continue;
+
+        if (unlikely(parent->d_flags & DCACHE_OP_COMPARE)) {
+            int tlen;
+            const char *tname;
+            if (dentry->d_name.hash != hashlen_hash(hashlen))
+                continue;
+            tlen = dentry->d_name.len;
+            tname = dentry->d_name.name;
+            /* we want a consistent (name,len) pair */
+seqretry:  // Declare the label here
+            if (read_seqcount_retry(&dentry->d_seq, seq)) {
+                cpu_relax();
+                goto seqretry;  // This will now correctly jump to the label
+            }
+            if (parent->d_op->d_compare(dentry, tlen, tname, name) != 0)
+                continue;
+        } else {
+            if (dentry->d_name.hash_len != hashlen)
+                continue;
+            if (dentry_cmp(dentry, str, hashlen_len(hashlen)) != 0)
+                continue;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+            if (dentry->d_inode && unlikely(dentry->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+                continue;
+            }
+#endif
+        }
+        *seqp = seq;
+        return dentry;
+    }
+    return NULL;
 }
 
 /**
@@ -2329,11 +2359,17 @@ struct dentry *__d_lookup(const struct dentry *parent, const struct qstr *name)
 	 * See Documentation/filesystems/path-lookup.txt for more details.
 	 */
 	rcu_read_lock();
-	
+
 	hlist_bl_for_each_entry_rcu(dentry, node, b, d_hash) {
 
 		if (dentry->d_name.hash != hash)
 			continue;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (dentry->d_inode && unlikely(dentry->d_inode->i_state & INODE_STATE_SUS_PATH) && likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
+			continue;
+		}
+#endif
 
 		spin_lock(&dentry->d_lock);
 		if (dentry->d_parent != parent)

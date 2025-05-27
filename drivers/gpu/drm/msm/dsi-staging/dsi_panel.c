@@ -24,6 +24,8 @@
 #include "dsi_display.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
+#include "dsi_panel_mi.h"
+#include "xiaomi_frame_stat.h"
 
 /**
  * topology is currently defined by a set of following 3 values:
@@ -47,6 +49,8 @@
 
 extern void lcd_esd_enable(bool on);
 extern char g_lcd_id_mi[64];
+extern struct frame_stat fm_stat;
+struct dsi_panel *g_panel;
 
 static int panel_disp_param_send_lock(struct dsi_panel *panel, int param);
 int dsi_display_read_panel(struct dsi_panel *panel, struct dsi_read_config *read_config);
@@ -268,7 +272,7 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		rc = gpio_request(r_config->reset_gpio, "reset_gpio");
 		if (rc) {
-			pr_debug("request for reset_gpio failed, rc=%d\n", rc);
+			pr_err("request for reset_gpio failed, rc=%d\n", rc);
 			goto error;
 		}
 	}
@@ -276,7 +280,7 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	if (gpio_is_valid(r_config->disp_en_gpio)) {
 		rc = gpio_request(r_config->disp_en_gpio, "disp_en_gpio");
 		if (rc) {
-			pr_debug("request for disp_en_gpio failed, rc=%d\n", rc);
+			pr_err("request for disp_en_gpio failed, rc=%d\n", rc);
 			goto error_release_reset;
 		}
 	}
@@ -284,7 +288,7 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	if (gpio_is_valid(panel->bl_config.en_gpio)) {
 		rc = gpio_request(panel->bl_config.en_gpio, "bklt_en_gpio");
 		if (rc) {
-			pr_debug("request for bklt_en_gpio failed, rc=%d\n", rc);
+			pr_err("request for bklt_en_gpio failed, rc=%d\n", rc);
 			goto error_release_disp_en;
 		}
 	}
@@ -348,7 +352,7 @@ int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		gpio_set_value(r_config->reset_gpio, 0);
-		pr_debug("GPIO pulled low to simulate ESD\n");
+		pr_info("GPIO pulled low to simulate ESD\n");
 		return 0;
 	}
 	pr_err("failed to pull down gpio\n");
@@ -520,6 +524,8 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	if (rc)
 		pr_err("[%s] failed to enable vregs, rc=%d\n", panel->name, rc);
 
+	mdelay(5);
+
 	return rc;
 }
 static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
@@ -671,7 +677,7 @@ static int dsi_panel_update_pwm_backlight(struct dsi_panel *panel,
 
 	bl = &panel->bl_config;
 	if (!bl->pwm_bl) {
-		pr_debug("pwm device not found\n");
+		pr_err("pwm device not found\n");
 		return -EINVAL;
 	}
 
@@ -729,7 +735,7 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		rc = dsi_panel_update_pwm_backlight(panel, bl_lvl);
 		break;
 	default:
-		pr_debug("Backlight type(%d) not supported\n", bl->type);
+		pr_err("Backlight type(%d) not supported\n", bl->type);
 		rc = -ENOTSUPP;
 	}
 
@@ -1497,6 +1503,16 @@ static int dsi_panel_parse_dfps_caps(struct dsi_panel *panel)
 	}
 	dfps_caps->dfps_support = true;
 
+	if (dfps_caps->dfps_support) {
+		supported = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-pan-enable-smart-fps");
+		if (supported) {
+			pr_debug("[%s] Smart DFPS is supported\n", name);
+			dfps_caps->smart_fps_support = true;
+		} else
+			dfps_caps->smart_fps_support = false;
+	}
+
 	/* calculate max and min fps */
 	dfps_caps->max_refresh_rate = dfps_caps->dfps_list[0];
 	dfps_caps->min_refresh_rate = dfps_caps->dfps_list[0];
@@ -1672,7 +1688,7 @@ static int dsi_panel_parse_panel_mode(struct dsi_panel *panel)
 
 	panel_mode_switch_enabled = utils->read_bool(utils->data,
 			"qcom,mdss-dsi-panel-mode-switch");
-	pr_debug("%s: panel operating mode switch feature %s\n", __func__,
+	pr_info("%s: panel operating mode switch feature %s\n", __func__,
 		(panel_mode_switch_enabled ? "enabled" : "disabled"));
 
 	if (panel_mode == DSI_OP_VIDEO_MODE || panel_mode_switch_enabled) {
@@ -1828,13 +1844,6 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-dispparam-max-luminance-valid-command",
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
-	"qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command",
-	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command",
-	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command",
-	"qcom,mdss-dsi-dispparam-cabcuion-command",
-	"qcom,mdss-dsi-dispparam-cabcstillon-command",
-	"qcom,mdss-dsi-dispparam-cabcmovieon-command",
-	"qcom,mdss-dsi-dispparam-cabcoff-command",
 	"qcom,mdss-dsi-dispparam-crc-dcip3-on-command",
 	"qcom,mdss-dsi-dispparam-crc-off-command",
 
@@ -1917,13 +1926,6 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-dispparam-max-luminance-valid-command-state",
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
-	"qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command-state",
-	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command-state",
-	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command-state",
-	"qcom,mdss-dsi-dispparam-cabcuion-command-state",
-	"qcom,mdss-dsi-dispparam-cabcstillon-command-state",
-	"qcom,mdss-dsi-dispparam-cabcmovieon-command-state",
-	"qcom,mdss-dsi-dispparam-cabcoff-command-state",
 	"qcom,mdss-dsi-dispparam-crc-dcip3-on-command-state",
 	"qcom,mdss-dsi-dispparam-crc-off-command-state",
 };
@@ -2202,8 +2204,17 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 {
 	struct dsi_parser_utils *utils = &panel->utils;
 
-	panel->ulps_feature_enabled = false;
-	panel->ulps_suspend_enabled = false;
+	panel->ulps_feature_enabled =
+		utils->read_bool(utils->data, "qcom,ulps-enabled");
+
+	pr_info("%s: ulps feature %s\n", __func__,
+		(panel->ulps_feature_enabled ? "enabled" : "disabled"));
+
+	panel->ulps_suspend_enabled =
+		utils->read_bool(utils->data, "qcom,suspend-ulps-enabled");
+
+	pr_info("%s: ulps during suspend feature %s", __func__,
+		(panel->ulps_suspend_enabled ? "enabled" : "disabled"));
 
 	panel->te_using_watchdog_timer = utils->read_bool(utils->data,
 					"qcom,mdss-dsi-te-using-wd");
@@ -2951,7 +2962,7 @@ static int dsi_panel_parse_topology(
 	};
 
 	if (topology_override >= 0 && topology_override < top_count) {
-		pr_debug("override topology: cfg:%d lm:%d comp_enc:%d intf:%d\n",
+		pr_info("override topology: cfg:%d lm:%d comp_enc:%d intf:%d\n",
 			topology_override,
 			topology[topology_override].num_lm,
 			topology[topology_override].num_enc,
@@ -2974,7 +2985,7 @@ static int dsi_panel_parse_topology(
 		goto parse_fail;
 	}
 
-	pr_debug("default topology: lm: %d comp_enc:%d intf: %d\n",
+	pr_info("default topology: lm: %d comp_enc:%d intf: %d\n",
 		topology[top_sel].num_lm,
 		topology[top_sel].num_enc,
 		topology[top_sel].num_intf);
@@ -3025,7 +3036,7 @@ static int dsi_panel_parse_roi_alignment(struct dsi_parser_utils *utils,
 			align->min_height = value[5];
 		}
 
-		pr_debug("roi alignment: [%d, %d, %d, %d, %d, %d]\n",
+		pr_info("roi alignment: [%d, %d, %d, %d, %d, %d]\n",
 			align->xstart_pix_align,
 			align->width_pix_align,
 			align->ystart_pix_align,
@@ -3061,13 +3072,13 @@ static int dsi_panel_parse_partial_update_caps(struct dsi_display_mode *mode,
 		else if (!strcmp(data, "single_roi"))
 			roi_caps->num_roi = 1;
 		else {
-			pr_debug(
+			pr_info(
 			"invalid value for qcom,partial-update-enabled: %s\n",
 			data);
 			return 0;
 		}
 	} else {
-		pr_debug("partial update disabled as the property is not set\n");
+		pr_info("partial update disabled as the property is not set\n");
 		return 0;
 	}
 
@@ -3076,7 +3087,7 @@ static int dsi_panel_parse_partial_update_caps(struct dsi_display_mode *mode,
 
 	roi_caps->enabled = roi_caps->num_roi > 0;
 
-	pr_debug("partial update num_rois=%d enabled=%d\n", roi_caps->num_roi,
+	pr_info("partial update num_rois=%d enabled=%d\n", roi_caps->num_roi,
 			roi_caps->enabled);
 
 	if (roi_caps->enabled)
@@ -3331,6 +3342,27 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 
 	esd_config = &panel->esd_config;
 	esd_config->status_mode = ESD_MODE_MAX;
+
+	/* esd-err-flag method will be prefered */
+	esd_config->esd_err_irq_gpio = of_get_named_gpio(panel->panel_of_node, "qcom,esd-err-int-gpio", 0);
+	esd_config->esd_err_irq_flags = IRQF_TRIGGER_FALLING | IRQF_ONESHOT;
+
+	if (gpio_is_valid(esd_config->esd_err_irq_gpio)) {
+		pr_info("esd irq gpio is valid\n");
+		esd_config->esd_err_irq = gpio_to_irq(esd_config->esd_err_irq_gpio);
+		rc = gpio_request(esd_config->esd_err_irq_gpio, "esd_err_int_gpio");
+		if (rc)
+			pr_err("%s: Failed to get esd irq GPIO%d (rc = %d)",
+					__func__, esd_config->esd_err_irq_gpio, rc);
+		else {
+			pr_err("%s: Succeed to get esd irq GPIO%d (rc = %d)",
+					__func__, esd_config->esd_err_irq_gpio, rc);
+			gpio_direction_input(esd_config->esd_err_irq_gpio);
+		}
+
+		return 0;
+	}
+
 	esd_config->esd_enabled = utils->read_bool(utils->data,
 		"qcom,esd-check-enabled");
 
@@ -3377,7 +3409,7 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 		esd_mode = "te_check";
 	}
 
-	pr_debug("ESD enabled with mode: %s\n", esd_mode);
+	pr_info("ESD enabled with mode: %s\n", esd_mode);
 
 	return 0;
 
@@ -3501,6 +3533,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (!panel->name)
 		panel->name = DSI_PANEL_DEFAULT_LABEL;
 
+	strlcpy(g_lcd_id_mi, panel->name, sizeof(g_lcd_id_mi));
+	msm_lcd_name_create_sysfs();
+	msm_panel_info_create_sysfs();
+
 	/*
 	 * Set panel type to LCD as default.
 	 */
@@ -3606,6 +3642,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		pr_debug("failed to parse esd config, rc=%d\n", rc);
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
+
+	g_panel = panel;
+
 	drm_panel_init(&panel->drm_panel);
 	mutex_init(&panel->panel_lock);
 
@@ -4124,7 +4163,7 @@ int dsi_panel_update_pps(struct dsi_panel *panel)
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PPS);
 	if (rc) {
-		pr_debug("[%s] failed to send DSI_CMD_SET_PPS cmds, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_PPS cmds, rc=%d\n",
 			panel->name, rc);
 	}
 
@@ -4161,7 +4200,7 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 			"ibb", REGULATOR_MODE_IDLE);
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
 		       panel->name, rc);
 exit:
 	mutex_unlock(&panel->panel_lock);
@@ -4183,7 +4222,7 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
 		       panel->name, rc);
 exit:
 	mutex_unlock(&panel->panel_lock);
@@ -4213,7 +4252,7 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 			"ibb", REGULATOR_MODE_NORMAL);
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
 		       panel->name, rc);
 exit:
 	mutex_unlock(&panel->panel_lock);
@@ -4242,7 +4281,7 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PRE_ON);
 	if (rc) {
-		pr_debug("[%s] failed to send DSI_CMD_SET_PRE_ON cmds, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_PRE_ON cmds, rc=%d\n",
 		       panel->name, rc);
 		goto error;
 	}
@@ -4344,7 +4383,7 @@ int dsi_panel_send_qsync_on_dcs(struct dsi_panel *panel,
 	pr_debug("ctrl:%d qsync on\n", ctrl_idx);
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_QSYNC_ON);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_QSYNC_ON cmds rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_QSYNC_ON cmds rc=%d\n",
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);
@@ -4366,7 +4405,7 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 	pr_debug("ctrl:%d qsync off\n", ctrl_idx);
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_QSYNC_OFF);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_QSYNC_OFF cmds rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_QSYNC_OFF cmds rc=%d\n",
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);
@@ -4508,6 +4547,8 @@ static void handle_dsi_read_data(struct dsi_panel *panel, struct dsi_read_config
 	return;
 }
 
+
+
 static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 {
 	int rc = 0;
@@ -4523,6 +4564,12 @@ static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 	}
 
 	pr_debug("[LCD] param_type=%d\n", param);
+
+	/* set smart fps status */
+	if (param & 0xF0000000) {
+		fm_stat.enabled = param & 0x01;
+		pr_info("[LCD] smart dfps enable = [%d]\n", fm_stat.enabled);
+	}
 
 	temp = param & 0x0000000F;
 	switch (temp) {
@@ -4735,6 +4782,34 @@ static int panel_disp_param_send_lock(struct dsi_panel *panel, int param)
 	default:
 		break;
 	}
+
+	temp = param & 0xF0000000;
+	switch (temp) {
+	case DISPPARAM_DFPS_LEVEL1:
+		pr_info("DFPS:30fps\n");
+		panel->panel_max_frame_rate = false;
+		break;
+	case DISPPARAM_DFPS_LEVEL2:
+		pr_info("DFPS:45fps\n");
+		panel->panel_max_frame_rate = false;
+		break;
+	case DISPPARAM_DFPS_LEVEL3:
+		pr_info("DFPS:60fps\n");
+		panel->panel_max_frame_rate = false;
+		break;
+	case DISPPARAM_DFPS_LEVEL4:
+		pr_info("DFPS:90fps\n");
+		panel->panel_max_frame_rate = false;
+		break;
+	case DISPPARAM_DFPS_LEVEL5:
+		pr_info("DFPS:120fps\n");
+		panel->panel_max_frame_rate = true;
+		break;
+	default:
+		break;
+	}
+
+
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
@@ -4773,7 +4848,7 @@ int dsi_panel_switch(struct dsi_panel *panel)
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);
@@ -4793,7 +4868,7 @@ int dsi_panel_post_switch(struct dsi_panel *panel)
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_TIMING_SWITCH);
 	if (rc)
-		pr_debug("[%s] failed to send DSI_CMD_SET_POST_TIMING_SWITCH cmds, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_POST_TIMING_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);
@@ -4817,13 +4892,13 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		       panel->name, rc);
 	else
 		panel->panel_initialized = true;
+
+
+	idle_status = false;
+
 	mutex_unlock(&panel->panel_lock);
 
-	if (panel->hbm_mode)
-		dsi_panel_apply_hbm_mode(panel);
-
-	if (panel->cabc_mode)
-		dsi_panel_apply_cabc_mode(panel);
+	lcd_esd_enable(1);
 
 	return rc;
 }
@@ -4841,7 +4916,7 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_ON);
 	if (rc) {
-		pr_debug("[%s] failed to send DSI_CMD_SET_POST_ON cmds, rc=%d\n",
+		pr_err("[%s] failed to send DSI_CMD_SET_POST_ON cmds, rc=%d\n",
 		       panel->name, rc);
 		goto error;
 	}
@@ -4895,6 +4970,8 @@ int dsi_panel_disable(struct dsi_panel *panel)
 		       panel->power_mode == SDE_MODE_DPMS_LP2))
 			dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 				"ibb", REGULATOR_MODE_STANDBY);
+
+		lcd_esd_enable(0);
 
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_OFF);
 		if (rc) {
@@ -4961,77 +5038,27 @@ error:
 	return rc;
 }
 
-<<<<<<< HEAD
-int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
-{
-	static const enum dsi_cmd_set_type type_map[] = {
-		DSI_CMD_SET_DISP_LCD_HBM_OFF,
-		DSI_CMD_SET_DISP_LCD_HBM_L1_ON,
-		DSI_CMD_SET_DISP_LCD_HBM_L2_ON
-	};
-
-	enum dsi_cmd_set_type type;
-	int rc;
-
-	if (panel->hbm_mode >= 0 &&
-		panel->hbm_mode < ARRAY_SIZE(type_map))
-		type = type_map[panel->hbm_mode];
-	else
-		type = type_map[0];
-
-	mutex_lock(&panel->panel_lock);
-	rc = dsi_panel_tx_cmd_set(panel, type);
-	mutex_unlock(&panel->panel_lock);
-
-	return rc;
-}
-
-int dsi_panel_apply_cabc_mode(struct dsi_panel *panel)
-{
-	static const enum dsi_cmd_set_type type_map[] = {
-		DSI_CMD_SET_DISP_CABC_OFF,
-		DSI_CMD_SET_DISP_CABC_UI_ON,
-		DSI_CMD_SET_DISP_CABC_STILL_ON,
-		DSI_CMD_SET_DISP_CABC_MOVIE_ON
-	};
-
-	enum dsi_cmd_set_type type;
-	int rc;
-
-	if (panel->cabc_mode >= 0 &&
-		panel->cabc_mode < ARRAY_SIZE(type_map))
-		type = type_map[panel->cabc_mode];
-	else
-		type = type_map[0];
-
-	mutex_lock(&panel->panel_lock);
-	rc = dsi_panel_tx_cmd_set(panel, type);
-	mutex_unlock(&panel->panel_lock);
-
-	return rc;
-=======
 int dsi_panel_set_feature(struct dsi_panel *panel, enum dsi_cmd_set_type type)
 {
 		int rc = 0;
 
 		if (!panel) {
-				pr_err("Invalid params\n");
-				return -EINVAL;
+			pr_err("Invalid params\n");
+			return -EINVAL;
 		}
 		pr_info("xinj:%s panel_initialized=%d type=%d\n", __func__, panel->panel_initialized, type);
 		if (!panel->panel_initialized) {
-				pr_err("xinj: con't set cmds type=%d\n", type);
-				return -EINVAL;
+			pr_err("xinj: con't set cmds type=%d\n", type);
+			return -EINVAL;
 		}
 
 		mutex_lock(&panel->panel_lock);
 
 		rc = dsi_panel_tx_cmd_set(panel, type);
 		if (rc) {
-				pr_err("[%s] failed to send DSI_CMD_SET_FEATURE_ON/OFF cmds, rc=%d,type=%d\n",
-						panel->name, rc, type);
+			pr_err("[%s] failed to send DSI_CMD_SET_FEATURE_ON/OFF cmds, rc=%d,type=%d\n",
+					panel->name, rc, type);
 		}
 		mutex_unlock(&panel->panel_lock);
 		return rc;
->>>>>>> 3bd8b5acb208 ([M700][LCD][HTH-88211] Add cabc mode)
 }

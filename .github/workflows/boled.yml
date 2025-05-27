@@ -23,6 +23,10 @@ jobs:
           source build.sh
           echo "ZIPNAME=${ZIPNAME}" >> $GITHUB_ENV
 
+      - name: Fetch KernelSU-SuSFS
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs-dev
+
       - name: Run KSU build script
         run: |
           export KBUILD_BUILD_USER=nobody

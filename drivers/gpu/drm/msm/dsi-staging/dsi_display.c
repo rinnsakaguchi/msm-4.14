@@ -48,6 +48,7 @@
 
 DEFINE_MUTEX(dsi_display_clk_mutex);
 
+char g_lcd_id_mi[64];
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
 static struct dsi_display_boot_param boot_displays[MAX_DSI_ACTIVE_DISPLAY] = {
@@ -59,8 +60,6 @@ static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
 	{}
 };
-
-static unsigned int cur_refresh_rate = 60;
 
 static void dsi_display_mask_ctrl_error_interrupts(struct dsi_display *display,
 			u32 mask, bool enable)
@@ -5793,7 +5792,6 @@ static int dsi_display_bind(struct device *dev,
 	dsi_display_whitepoint_create_sysfs();
 	set_lct_tp_lockdown_info_callback(lct_tp_lockdown_info_callback);
 	dsi_display_feature_create_sysfs(display);
-	
 	goto error;
 
 error_host_deinit:
@@ -7084,9 +7082,7 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 		(cur_mode->panel_mode == adj_mode->panel_mode)) {
 		/* dfps and dynamic clock with const fps use case */
 		if (dsi_display_mode_switch_dfps(cur_mode, adj_mode)) {
-			dsi_panel_get_dfps_caps(display->panel, &dfps_caps {
-				WRITE_ONCE(cur_refresh_rate, adj_mode->timing.refresh_rate);
-			}
+			dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
 			if (dfps_caps.dfps_support ||
 			    dyn_clk_caps->maintain_const_fps) {
 				pr_debug("mode switch is variable refresh\n");
@@ -7606,59 +7602,30 @@ int dsi_display_prepare(struct dsi_display *display)
 	whitep_display = display;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
-	
-	/* Engine states and panel states are populated during splash
-	 * resource init and hence we return early
-	 */
-	if (display->is_cont_splash_enabled) {
-
-		dsi_display_config_ctrl_for_cont_splash(display);
-
-		rc = dsi_display_splash_res_cleanup(display);
-		if (rc) {
-			pr_err("Continuous splash res cleanup failed, rc=%d\n",
-				rc);
-			return -EINVAL;
-		}
-
-		display->panel->panel_initialized = true;
-		pr_debug("cont splash enabled, display enable not required\n");
-		return 0;
-	}
-
 	mutex_lock(&display->display_lock);
 
 	mode = display->panel->cur_mode;
-	WRITE_ONCE(cur_refresh_rate, mode->timing.refresh_rate);
+
+	dsi_display_set_ctrl_esd_check_flag(display, false);
+
+	/* Set up ctrl isr before enabling core clk */
+	dsi_display_ctrl_isr_configure(display, true);
 
 	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
-		rc = dsi_panel_switch(display->panel);
-		if (rc) {
-			pr_err("[%s] failed to switch DSI panel mode, rc=%d\n",
-				   display->name, rc);
+		if (display->is_cont_splash_enabled) {
+			pr_err("DMS is not supposed to be set on first frame\n");
+			rc = -EINVAL;
 			goto error;
 		}
-	} else if (!(display->panel->cur_mode->dsi_mode_flags &
-			DSI_MODE_FLAG_POMS)){
-		rc = dsi_panel_enable(display->panel);
-		if (rc) {
-			pr_err("[%s] failed to enable DSI panel, rc=%d\n",
-			       display->name, rc);
-			goto error;
-		}
+		/* update dsi ctrl for new mode */
+		rc = dsi_display_pre_switch(display);
+		if (rc)
+			pr_err("[%s] panel pre-prepare-res-switch failed, rc=%d\n",
+					display->name, rc);
+		goto error;
 	}
 
-	if (mode->priv_info->dsc_enabled) {
-		mode->priv_info->dsc.pic_width *= display->ctrl_count;
-		rc = dsi_panel_update_pps(display->panel);
-		if (rc) {
-			pr_err("[%s] panel pps cmd update failed, rc=%d\n",
-				display->name, rc);
-			goto error;
-		}
-	}
-
-	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
+	if (!(mode->dsi_mode_flags & DSI_MODE_FLAG_POMS) &&
 		(!display->is_cont_splash_enabled)) {
 		/*
 		 * For continuous splash usecase we skip panel
@@ -8040,11 +8007,6 @@ int dsi_display_pre_commit(void *display,
 	}
 
 	return rc;
-}
-
-unsigned int dsi_panel_get_refresh_rate(void)
-{
-	return READ_ONCE(cur_refresh_rate);
 }
 
 int dsi_display_enable(struct dsi_display *display)

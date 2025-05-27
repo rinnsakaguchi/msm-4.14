@@ -21,6 +21,7 @@
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
+#include "dsi_display.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
 #include "dsi_panel_mi.h"
@@ -45,6 +46,14 @@
 #define MAX_PANEL_JITTER		10
 #define DEFAULT_PANEL_PREFILL_LINES	25
 #define TICKS_IN_MICRO_SECOND		1000000
+
+extern void lcd_esd_enable(bool on);
+extern char g_lcd_id_mi[64];
+extern struct frame_stat fm_stat;
+struct dsi_panel *g_panel;
+
+static int panel_disp_param_send_lock(struct dsi_panel *panel, int param);
+int dsi_display_read_panel(struct dsi_panel *panel, struct dsi_read_config *read_config);
 
 enum dsi_dsc_ratio_type {
 	DSC_8BPC_8BPP,
@@ -263,7 +272,7 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		rc = gpio_request(r_config->reset_gpio, "reset_gpio");
 		if (rc) {
-			pr_debug("request for reset_gpio failed, rc=%d\n", rc);
+			pr_err("request for reset_gpio failed, rc=%d\n", rc);
 			goto error;
 		}
 	}
@@ -271,7 +280,7 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	if (gpio_is_valid(r_config->disp_en_gpio)) {
 		rc = gpio_request(r_config->disp_en_gpio, "disp_en_gpio");
 		if (rc) {
-			pr_debug("request for disp_en_gpio failed, rc=%d\n", rc);
+			pr_err("request for disp_en_gpio failed, rc=%d\n", rc);
 			goto error_release_reset;
 		}
 	}
@@ -279,7 +288,7 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	if (gpio_is_valid(panel->bl_config.en_gpio)) {
 		rc = gpio_request(panel->bl_config.en_gpio, "bklt_en_gpio");
 		if (rc) {
-			pr_debug("request for bklt_en_gpio failed, rc=%d\n", rc);
+			pr_err("request for bklt_en_gpio failed, rc=%d\n", rc);
 			goto error_release_disp_en;
 		}
 	}
@@ -343,7 +352,7 @@ int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		gpio_set_value(r_config->reset_gpio, 0);
-		pr_debug("GPIO pulled low to simulate ESD\n");
+		pr_info("GPIO pulled low to simulate ESD\n");
 		return 0;
 	}
 	pr_err("failed to pull down gpio\n");
@@ -515,6 +524,8 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	if (rc)
 		pr_err("[%s] failed to enable vregs, rc=%d\n", panel->name, rc);
 
+	mdelay(5);
+
 	return rc;
 }
 static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
@@ -666,7 +677,7 @@ static int dsi_panel_update_pwm_backlight(struct dsi_panel *panel,
 
 	bl = &panel->bl_config;
 	if (!bl->pwm_bl) {
-		pr_debug("pwm device not found\n");
+		pr_err("pwm device not found\n");
 		return -EINVAL;
 	}
 
@@ -1491,6 +1502,16 @@ static int dsi_panel_parse_dfps_caps(struct dsi_panel *panel)
 		goto error;
 	}
 	dfps_caps->dfps_support = true;
+
+	if (dfps_caps->dfps_support) {
+		supported = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-pan-enable-smart-fps");
+		if (supported) {
+			pr_debug("[%s] Smart DFPS is supported\n", name);
+			dfps_caps->smart_fps_support = true;
+		} else
+			dfps_caps->smart_fps_support = false;
+	}
 
 	/* calculate max and min fps */
 	dfps_caps->max_refresh_rate = dfps_caps->dfps_list[0];
@@ -4871,13 +4892,13 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		       panel->name, rc);
 	else
 		panel->panel_initialized = true;
+
+
+	idle_status = false;
+
 	mutex_unlock(&panel->panel_lock);
 
-	if (panel->hbm_mode)
-		dsi_panel_apply_hbm_mode(panel);
-
-	if (panel->cabc_mode)
-		dsi_panel_apply_cabc_mode(panel);
+	lcd_esd_enable(1);
 
 	return rc;
 }
@@ -5014,55 +5035,6 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 	}
 error:
 	mutex_unlock(&panel->panel_lock);
-	return rc;
-}
-
-int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
-{
-	static const enum dsi_cmd_set_type type_map[] = {
-		DSI_CMD_SET_DISP_LCD_HBM_OFF,
-		DSI_CMD_SET_DISP_LCD_HBM_L1_ON,
-		DSI_CMD_SET_DISP_LCD_HBM_L2_ON
-	};
-
-	enum dsi_cmd_set_type type;
-	int rc;
-
-	if (panel->hbm_mode >= 0 &&
-		panel->hbm_mode < ARRAY_SIZE(type_map))
-		type = type_map[panel->hbm_mode];
-	else
-		type = type_map[0];
-
-	mutex_lock(&panel->panel_lock);
-	rc = dsi_panel_tx_cmd_set(panel, type);
-	mutex_unlock(&panel->panel_lock);
-
-	return rc;
-}
-
-int dsi_panel_apply_cabc_mode(struct dsi_panel *panel)
-{
-	static const enum dsi_cmd_set_type type_map[] = {
-		DSI_CMD_SET_DISP_CABC_OFF,
-		DSI_CMD_SET_DISP_CABC_UI_ON,
-		DSI_CMD_SET_DISP_CABC_STILL_ON,
-		DSI_CMD_SET_DISP_CABC_MOVIE_ON
-	};
-
-	enum dsi_cmd_set_type type;
-	int rc;
-
-	if (panel->cabc_mode >= 0 &&
-		panel->cabc_mode < ARRAY_SIZE(type_map))
-		type = type_map[panel->cabc_mode];
-	else
-		type = type_map[0];
-
-	mutex_lock(&panel->panel_lock);
-	rc = dsi_panel_tx_cmd_set(panel, type);
-	mutex_unlock(&panel->panel_lock);
-
 	return rc;
 }
 

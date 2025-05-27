@@ -18,7 +18,6 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/err.h>
-#include <drm/drm_notifier.h>
 
 #include "msm_drv.h"
 #include "sde_connector.h"

@@ -8323,14 +8323,6 @@ int dsi_display_unprepare(struct dsi_display *display)
 	return rc;
 }
 
-// Tambahkan ini di file yang relevan, contoh: dsi_display_vendor.c
-
-void update_lct_tp_info(char *tp_info_buf, char *tp_lockdown_info_buf)
-{
-    // Implementasi sementara, atau log saja
-    pr_info("update_lct_tp_info called, but not implemented.\n");
-}
-
 static int __init dsi_display_register(void)
 {
 	dsi_phy_drv_register();

@@ -1071,6 +1071,12 @@ static int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display,
 	return rc;
 }
 
+// Dummy fallback jika implementasi asli tidak tersedia
+void update_lct_tp_info(char *tp_info_buf, char *tp_lockdown_info_buf)
+{
+    pr_info("Dummy update_lct_tp_info() called.\n");
+}
+
 int dsi_display_cmd_transfer(struct drm_connector *connector,
 		void *display, const char *cmd_buf,
 		u32 cmd_buf_len)

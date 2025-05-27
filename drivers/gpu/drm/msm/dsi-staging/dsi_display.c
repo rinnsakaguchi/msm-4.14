@@ -61,8 +61,6 @@ static const struct of_device_id dsi_display_dt_match[] = {
 	{}
 };
 
-static unsigned int cur_refresh_rate = 60;>
-
 static void dsi_display_mask_ctrl_error_interrupts(struct dsi_display *display,
 			u32 mask, bool enable)
 {
@@ -1245,13 +1243,13 @@ int dsi_display_set_power(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
-        if (!connector || !connector->dev) {
-                pr_err("invalid connector/dev\n");
-                return -EINVAL;
-        } else {
-                dev = connector->dev;
-                event = dev->doze_state;
-        }
+	if (!connector || !connector->dev) {
+		pr_err("invalid connector/dev\n");
+		return -EINVAL;
+	} else {
+		dev = connector->dev;
+		event = dev->doze_state;
+	}
 
 	g_notify_data.data = &event;
 
@@ -5791,7 +5789,6 @@ static int dsi_display_bind(struct device *dev,
 
 	/* register te irq handler */
 	dsi_display_register_te_irq(display);
-	
 	dsi_display_whitepoint_create_sysfs();
 	set_lct_tp_lockdown_info_callback(lct_tp_lockdown_info_callback);
 	dsi_display_feature_create_sysfs(display);
@@ -8012,11 +8009,6 @@ int dsi_display_pre_commit(void *display,
 	return rc;
 }
 
-unsigned int dsi_panel_get_refresh_rate(void)
-{
-	return READ_ONCE(cur_refresh_rate);
-}
-
 int dsi_display_enable(struct dsi_display *display)
 {
 	int rc = 0;
@@ -8055,7 +8047,6 @@ int dsi_display_enable(struct dsi_display *display)
 	mutex_lock(&display->display_lock);
 
 	mode = display->panel->cur_mode;
-	WRITE_ONCE(cur_refresh_rate, mode->timing.refresh_rate);
 
 	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
 		rc = dsi_panel_post_switch(display->panel);

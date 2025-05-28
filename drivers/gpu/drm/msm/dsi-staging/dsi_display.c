@@ -1071,10 +1071,25 @@ static int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display,
 	return rc;
 }
 
-// Dummy fallback jika implementasi asli tidak tersedia
-void update_lct_tp_info(char *tp_info_buf, char *tp_lockdown_info_buf)
-{
-    pr_info("Dummy update_lct_tp_info() called.\n");
+// Tambahan untuk idle_status jika tidak ada definisi
+bool idle_status = false;
+
+// Dummy implementasi
+void lcd_esd_enable(bool on) { pr_info("lcd_esd_enable(%d)\n", on); }
+
+void set_lct_tp_lockdown_info_callback(int (*pfun)(void)) {
+    pr_info("set_lct_tp_lockdown_info_callback() dummy\n");
+}
+
+struct frame_stat {
+    int enabled;
+    // Tambah field lain sesuai kebutuhan
+};
+
+struct frame_stat fm_stat = {0};
+
+int dsi_panel_get_refresh_rate(struct dsi_panel *panel) {
+    return 60;
 }
 
 int dsi_display_cmd_transfer(struct drm_connector *connector,

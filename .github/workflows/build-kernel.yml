@@ -61,19 +61,20 @@ jobs:
       run: |
            zip -r AnyKernel3.zip AnyKernel3
 
-    - name: Send Notification to Telegram
+    - name: Create Telegram caption
       run: |
-           curl -X POST \
-           https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
-           -H 'Content-Type: application/json' \
-           -d '{"chat_id": "${{ secrets.TELEGRAM_CHAT_ID }}", "text": "Kernel build selesai! \nWaktu build: ${{ env.BUILD_TIME }}\nArtifact: Strix-Interstellar-MIUI-${{ env.BUILD_TIME }}"}'
+           BUILD_DATE="$(date '+%H:%M %d/%m/%Y')"
+           HEAD="$(git rev-parse HEAD)"
+           HEAD_COMMIT="https://github.com/rinnsakaguchi/msm-4.14/commit/$HEAD"
+           echo -e "${BUILD_DATE}\n\n${HEAD_COMMIT}" > caption.txt
 
-    - name: Send Kernel to Telegram
+    - name: Upload to Telegram
       run: |
-           curl -X POST \
-           https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument \
-           -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-           -F "document=@AnyKernel3.zip"
+           caption=$(<caption.txt)
+           curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+           -F chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+           -F document=@"${{ env.ZIPNAME }}" \
+           -F caption="${caption}"
 
 
 

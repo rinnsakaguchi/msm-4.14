@@ -1,25 +1,86 @@
 name: Build Kernel
 
 on:
-  push:
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    name: Build Kernel
+    runs-on: ubuntu-latest
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@main
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup timezone
-        uses: szenius/set-timezone@master
-        with:
-          timezoneLinux: "America/Sao_Paulo"
+    - name: Set Timezone
+      run: |
+        sudo rm /etc/localtime
+        sudo ln -s /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
 
-      - name: Run standard build script
-        run: |
-          export KBUILD_BUILD_USER=nobody
-          export KBUILD_BUILD_HOST=android-build
-          source build.sh
-          echo "ZIPNAME=${ZIPNAME}" >> $GITHUB_ENV
+    - name: Install Dependencies
+      run: |
+        sudo apt update -y
+        sudo apt install bc cpio flex bison aptitude git python-is-python3 tar aria2 perl wget curl lz4 libssl-dev -y
 
+    - name: Clone Toolchains
+      run: |
+        mkdir clang && cd clang
+        curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+        chmod a+x antman
+        ./antman -S
+        ./antman --patch=glibc
+        cd ..
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
+
+    - name: Setup Environment Variables
+      run: |
+        echo "BUILD_TIME=$(TZ=Asia/Jakarta date '+%d-%m-%Y')" >> $GITHUB_ENV
+        echo "CLANG_PATH=$GITHUB_WORKSPACE/clang" >> $GITHUB_ENV
+        echo "GCC64_PATH=$GITHUB_WORKSPACE/gcc64" >> $GITHUB_ENV
+        echo "GCC32_PATH=$GITHUB_WORKSPACE/gcc32" >> $GITHUB_ENV
+
+    - name: Clone SUKISU
+      run: |
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+
+    - name: Set Build Start Time
+      run: echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+
+    - name: Build Kernel
+      run: |
+        export ARCH=arm64
+        export PATH="$CLANG_PATH/bin:$GCC64_PATH/bin:$GCC32_PATH/bin:$PATH"
+        export KBUILD_BUILD_USER=Mahiro
+        export KBUILD_BUILD_HOST=Nyanarch
+        export KBUILD_COMPILER_STRING="$($CLANG_PATH/bin/clang --version | head -n 1)"
+        make O=out ARCH=arm64 surya_defconfig
+        make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=$GCC64_PATH/bin/aarch64-elf- \
+          CROSS_COMPILE_ARM32=$GCC32_PATH/bin/arm-eabi-
+
+    - name: Clone AnyKernel3
+      run: |
+        git clone --depth=1 https://github.com/rinnsakaguchi/AnyKernel3 -b FSociety AnyKernel3
+        cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+        cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+        cp out/arch/arm64/boot/dtb.img AnyKernel3/dtb.img
+
+    - name: Create Flashable Zip
+      run: |
+        cd AnyKernel3
+        zip -r9 ../Archive-Kernel-Surya-${{ env.BUILD_TIME }}.zip ./*
+        cd ..
+
+    - name: Send Flashable to Telegram
+      run: |
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+          -F chat_id=${TELEGRAM_CHAT_ID} \
+          -F document=@Archive-Kernel-Surya-${{ env.BUILD_TIME }}.zip \
+          -F caption=$'*✅ Build Completed!*\n\n📦 *Filename:* Archive-Kernel-Surya-${{ env.BUILD_TIME }}.zip\n🕒 *Build Date:* ${{ env.BUILD_TIME }}\n📱 *Device:* Surya (POCO X3 NFC)\n🔧 *Compiler:* Neutron Clang\n\n💬 Built with ❤️ by @HiraTeam' \
+          -F parse_mode=Markdown
